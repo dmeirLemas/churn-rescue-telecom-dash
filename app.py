@@ -1,265 +1,288 @@
-
+# app.py
 import streamlit as st
-import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
 
-from churn_utils.data import load_data, process_data
-from churn_utils.modeling import load_models_and_scaler
-from churn_utils.churn import calc_churn_probability, cond_remaining_hybrid, upd
+from churn_utils.data      import load_data, process_data
+from churn_utils.modeling  import load_models_and_scaler
+from churn_utils.churn     import calc_churn_probability, cond_remaining_hybrid
 from churn_utils.retention import (
-    apply_retention_full, apply_retention_contract, load_thetas
+    load_thetas,
+    apply_retention_full,
+    apply_retention_contract
 )
 
-# Page configuration
-st.set_page_config(
-    page_title="Telecom Churn & Retention Dashboard",
-    page_icon="📊",
-    layout="wide",
-)
+# ────────────────────────────
+# 0) Load everything once
+# ────────────────────────────
+st.set_page_config(layout="wide")
+xgb_model, lr_model, scaler = load_models_and_scaler()
+# your NN & kmeans should also be loaded inside churn_utils.modeling if you prefer
+from churn_utils.modeling import nn_churn, kmeans
+from churn_utils.retention import toggle_costs
+θ_full, θ_contract = load_thetas()
 
-# Custom CSS for better styling
-st.markdown("""
-<style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1E3A8A;
-        margin-bottom: 1.5rem;
-    }
-    .section-header {
-        font-size: 1.5rem;
-        font-weight: bold;
-        color: #1E3A8A;
-        margin-top: 2rem;
-        margin-bottom: 1rem;
-    }
-    .metric-container {
-        background-color: #F1F5F9;
-        border-radius: 0.5rem;
-        padding: 1rem;
-        margin-bottom: 1rem;
-    }
-</style>
-""", unsafe_allow_html=True)
+# ────────────────────────────
+# Sidebar: navigation
+# ────────────────────────────
+st.sidebar.title("Navigation")
+page = st.sidebar.radio("Go to", [
+    "📊 Overview",
+    "🗂️ Data",
+    "🤖 Model",
+    "📈 Churn Prediction",
+    "🎯 Retention Simulation"
+])
 
-# --- load models + thetas once at startup ---
-@st.cache_resource
-def load_resources():
-    xgb, lr_model, scaler = load_models_and_scaler()
-    # TODO: Replace with your actual loading code
-    nn_churn = None  # load your pre-trained NN here
-    kmeans = None    # load your pre-trained kmeans here
-    θ_full, θ_contract = load_thetas()
-    return xgb, lr_model, scaler, nn_churn, kmeans, θ_full, θ_contract
+# ────────────────────────────
+# 1) Overview
+# ────────────────────────────
+if page == "📊 Overview":
+    st.title("Telecom Churn & Retention — Overview")
+    st.markdown("""
+    **Project guide**  
+    1. Data sources & summary  
+    2. Our churn‐prediction approach  
+    3. Two retention strategies  
+    4. Simulation results & ROI  
+    """)
+    # add any static markdown / images you like
 
-xgb, lr_model, scaler, nn_churn, kmeans, θ_full, θ_contract = load_resources()
+# ────────────────────────────
+# 2) Data
+# ────────────────────────────
+elif page == "🗂️ Data":
+    import seaborn as sns
+    import matplotlib.pyplot as plt
 
-# --- Main UI ---
-st.markdown('<div class="main-header">Telecom Churn & Retention Dashboard</div>', unsafe_allow_html=True)
+    st.title("🗂️ Data Exploration")
 
-# --- sidebar: pick retention strategy ---
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/000000/cell-tower.png", width=80)
-    st.title("Dashboard Controls")
-    
-    strategy = st.radio("Choose retention policy:",
-        ["Full multi-head policy", "Contract only"]
-    )
-    
-    if strategy == "Full multi-head policy":
-        apply_retention = apply_retention_full
-        θ = θ_full
-        st.info("Using the comprehensive multi-head policy with 11 action heads")
+    # ── 1) Raw data sample ────────────────────────────────────────────────────
+    df_raw = load_data()
+    st.subheader("Raw Data Sample")
+    st.dataframe(df_raw.head(5))
+
+    # ── 2) Processed data sample ─────────────────────────────────────────────
+    df = process_data(df_raw)
+    st.subheader("Processed Data Sample")
+    st.dataframe(df.head(5))
+
+    # ── 3) Shape & memory ─────────────────────────────────────────────────────
+    n_rows, n_cols = df.shape
+    mem_mb = df.memory_usage(deep=True).sum() / 1024**2
+    st.markdown(f"- **Rows:** {n_rows:,} &nbsp; • &nbsp; **Cols:** {n_cols:,}")
+    st.markdown(f"- **Memory usage:** {mem_mb:.2f} MB")
+
+    # ── 4) Missing values (%) ─────────────────────────────────────────────────
+    st.subheader("Missing Values (%)")
+    miss_pct = df.isna().mean() * 100
+    miss_pct = miss_pct[miss_pct > 0].sort_values(ascending=False)
+    if miss_pct.empty:
+        st.write("No missing values!")
     else:
-        apply_retention = apply_retention_contract
-        θ = θ_contract
-        st.info("Using contract-only policy with focus on contract extensions")
+        st.bar_chart(miss_pct)
 
-# Create tabs for different sections
-tab1, tab2, tab3 = st.tabs(["Data Overview", "Churn Prediction", "Retention Impact"])
+    # ── 5) Numeric feature summary ─────────────────────────────────────────────
+    st.subheader("Numeric Feature Summary")
+    num = df.select_dtypes(include=["int", "float"])
+    desc = num.describe().T[["min", "mean", "max"]]
 
-with tab1:
-    st.markdown('<div class="section-header">Data Sample</div>', unsafe_allow_html=True)
-    
-    # Load data (with spinner to show it's working)
-    with st.spinner("Loading and processing data..."):
-        df = load_data()
-        proc = process_data(df)
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        st.dataframe(proc.head(10), use_container_width=True)
-    
-    with col2:
-        st.markdown("### Dataset Statistics")
-        st.write(f"Total customers: {len(proc):,}")
-        st.write(f"Feature count: {proc.shape[1]}")
-        
-        # Basic pie chart for categorical data (example)
-        if 'Contract' in proc.columns:
-            st.markdown("#### Contract Types")
-            contract_counts = proc['Contract'].value_counts()
-            fig, ax = plt.subplots(figsize=(5, 5))
-            ax.pie(contract_counts, labels=contract_counts.index, autopct='%1.1f%%', startangle=90)
-            ax.axis('equal')
-            st.pyplot(fig)
+    # split by max > 1 vs ≤ 1
+    large_mask = desc["max"] > 1.0
+    desc_large = desc[large_mask]
+    desc_small = desc[~large_mask]
 
-with tab2:
-    st.markdown('<div class="section-header">Churn Prediction Demo</div>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1, 1])
-    
-    with col1:
-        if st.button("Run churn prediction on full sample", type="primary"):
-            with st.spinner("Calculating churn probabilities..."):
-                df_demo = proc.copy()
-                calc_churn_probability(df_demo, proc, lr_model, nn_churn)
-                
-                # Display churn probability distribution
-                fig, ax = plt.subplots(figsize=(10, 4))
-                sns.histplot(df_demo["churn_prob"], bins=30, kde=True, ax=ax)
-                ax.set_title("Churn Probability Distribution")
-                ax.set_xlabel("Churn Probability")
-                ax.set_ylabel("Count")
-                st.pyplot(fig)
-                
-                # Display top at-risk customers
-                st.markdown("### Top At-Risk Customers")
-                at_risk = df_demo.sort_values("churn_prob", ascending=False).head(10)
-                st.dataframe(at_risk[["customerID", "churn_prob", "MonthlyCharges", "tenure"]], 
-                           use_container_width=True)
-    
-    with col2:
-        st.markdown("### Customer Churn Factors")
-        st.write("Churn prediction combines multiple factors:")
-        st.markdown("""
-        - Customer demographics
-        - Service subscriptions
-        - Payment history
-        - Tenure and contract type
-        - Customer service interactions
-        
-        The model uses a hybrid approach combining:
-        - Nearest-neighbor analysis
-        - Logistic regression
-        - Tenure-based adjustments
-        """)
+    if not desc_large.empty:
+        st.markdown("**📈 High-range features**")
+        st.dataframe(desc_large.round(3))
+    if not desc_small.empty:
+        st.markdown("**🔍 Categorical features**")
+        st.dataframe(desc_small.round(3))
 
-with tab3:
-    st.markdown('<div class="section-header">Retention Impact Simulation</div>', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([1, 3])
-    
-    with col1:
-        n_sample = st.slider("Sample size", 100, 5000, 500, step=100)
-        
-        run_simulation = st.button("Run Retention Simulation", type="primary")
-        
-        st.markdown("### Strategy Details")
-        if strategy == "Full multi-head policy":
-            st.markdown("""
-            **Multi-head policy** employs 11 distinct action heads:
-            - Contract upgrades
-            - Service additions
-            - Price adjustments
-            - Personalized offers
-            - And more...
-            """)
-        else:
-            st.markdown("""
-            **Contract-only policy** focuses solely on:
-            - Contract extensions (min 4 months)
-            - No price/service downgrades
-            - Simplified implementation
-            """)
-    
-    with col2:
-        if run_simulation:
-            with st.spinner("Running retention simulation..."):
-                # Run the simulation
-                df0 = proc.sample(n_sample, random_state=42).reset_index(drop=True)
-                calc_churn_probability(df0, proc, lr_model, nn_churn)
-                
-                # Create a copy for visualization
-                df_before = df0.copy()
-                
-                # Apply retention strategies
-                mask = df0["churn_pred"] == 1
-                df_off = df0.copy()
-                
-                if mask.any():
-                    df_off.loc[mask] = apply_retention(df0.loc[mask], θ, kmeans)
-                
-                calc_churn_probability(df_off, proc, lr_model, nn_churn)
-                
-                # Calculate remaining life
-                R0 = cond_remaining_hybrid(df0, proc, lr_model, nn_churn, kmeans, max_horizon=18)
-                R1 = cond_remaining_hybrid(df_off, proc, lr_model, nn_churn, kmeans, max_horizon=18)
-                
-                # Calculate revenues
-                rev0 = ((1-df0["churn_prob"])*df0["MonthlyCharges"]*R0).sum()
-                rev1 = ((1-df_off["churn_prob"])*df_off["MonthlyCharges"]*R1).sum()
-                
-                # Show comparison charts
-                fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 5))
-                
-                # Before intervention
-                sns.histplot(df0["churn_prob"], bins=20, kde=True, ax=ax1, color='salmon')
-                ax1.set_title("Churn Probability Before Intervention")
-                ax1.set_xlabel("Churn Probability")
-                ax1.set_ylim(0, n_sample/3)
-                
-                # After intervention
-                sns.histplot(df_off["churn_prob"], bins=20, kde=True, ax=ax2, color='skyblue')
-                ax2.set_title("Churn Probability After Intervention")
-                ax2.set_xlabel("Churn Probability")
-                ax2.set_ylim(0, n_sample/3)
-                
-                st.pyplot(fig)
-                
-                # Display metrics
-                st.markdown("### Revenue Impact")
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
-                    st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-                    st.metric("Revenue Before", f"${rev0:,.0f}", delta=None)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with col2:
-                    st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-                    st.metric("Revenue After", f"${rev1:,.0f}", delta=None)
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                with col3:
-                    st.markdown('<div class="metric-container">', unsafe_allow_html=True)
-                    delta = rev1 - rev0
-                    delta_percent = (delta / rev0) * 100 if rev0 > 0 else 0
-                    st.metric("Revenue Impact", f"${delta:,.0f}", delta=f"{delta_percent:.1f}%")
-                    st.markdown('</div>', unsafe_allow_html=True)
-                
-                # Show additional metrics
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    avg_churn_before = df0["churn_prob"].mean()
-                    avg_churn_after = df_off["churn_prob"].mean()
-                    churn_reduction = ((avg_churn_before - avg_churn_after) / avg_churn_before) * 100
-                    
-                    st.markdown("### Churn Metrics")
-                    st.write(f"Average churn probability before: {avg_churn_before:.2%}")
-                    st.write(f"Average churn probability after: {avg_churn_after:.2%}")
-                    st.write(f"Churn probability reduction: {churn_reduction:.1f}%")
-                
-                with col2:
-                    avg_life_before = R0.mean()
-                    avg_life_after = R1.mean()
-                    life_increase = avg_life_after - avg_life_before
-                    
-                    st.markdown("### Customer Lifetime")
-                    st.write(f"Average predicted months before: {avg_life_before:.1f}")
-                    st.write(f"Average predicted months after: {avg_life_after:.1f}")
-                    st.write(f"Average lifetime increase: {life_increase:.1f} months")
+    # ── 6) Mean bar-charts split ────────────────────────────────────────────────
+    st.subheader("Feature Means")
+    col1, col2 = st.columns(2)
+    if not desc_large.empty:
+        with col1:
+            st.markdown("📈 High-range means")
+            st.bar_chart(desc_large["mean"])
+    if not desc_small.empty:
+        with col2:
+            st.markdown("🔍 Categorical Ratios")
+            st.bar_chart(desc_small["mean"])
+
+    # ── 7) Correlation heatmap ─────────────────────────────────────────────────
+    st.subheader("Numeric Feature Correlations")
+    corr = num.corr()
+    fig, ax = plt.subplots(figsize=(12, 8))
+    sns.heatmap(corr, cmap="coolwarm", center=0, linewidths=0.5, ax=ax)
+    st.pyplot(fig)
+
+
+
+# ────────────────────────────
+# 3) Model
+# ────────────────────────────
+elif page == "🤖 Model":
+    import seaborn as sns
+    import matplotlib.pyplot as plt
+
+    st.title("Churn-Prediction Model")
+    st.markdown("""
+    We use:
+    - **Nearest-neighbors** for local churn ratio  
+    - **Logistic regression** for baseline prediction  
+    - **Tenure factor** to adjust by customer age  
+    """)
+
+    st.subheader("Model Coefficients")
+    coefs = pd.Series(lr_model.coef_[0], index=lr_model.feature_names_in_)
+    st.dataframe(
+        coefs.sort_values(ascending=False)
+             .to_frame("Coefficient")
+             .round(3)
+    )
+
+    st.subheader("Final Test Set Results")
+    st.markdown(f"**Accuracy:** 0.8149550402271651")
+
+    st.markdown("**Classification Report**")
+    st.markdown("""
+| Class            | Precision | Recall | F1-score | Support |
+|------------------|----------:|-------:|---------:|--------:|
+| Non-Churn (0)    |      0.85 |   0.92 |     0.88 |    1552 |
+| Churn (1)        |      0.70 |   0.54 |     0.61 |     561 |
+| **accuracy**     |          |        | **0.81** |    2113 |
+| **macro avg**    |      0.77 |   0.73 |     0.74 |    2113 |
+| **weighted avg** |      0.81 |   0.81 |     0.81 |    2113 |
+""")
+
+    st.subheader("Confusion Matrix")
+    # your static matrix
+    cm = np.array([[1421, 131],
+                   [ 260, 301]])
+    labels = ["Non-Churn (0)", "Churn (1)"]
+    fig, ax = plt.subplots(figsize=(4, 3))
+    sns.heatmap(
+        cm,
+        annot=True, fmt="d",
+        cmap="Blues", cbar=False,
+        xticklabels=labels,
+        yticklabels=labels,
+        linewidths=0.5,
+        ax=ax
+    )
+    ax.set_xlabel("Predicted")
+    ax.set_ylabel("Actual")
+    ax.set_title("Confusion Matrix")
+    st.pyplot(fig)
+
+    # And raw counts for clarity
+    tn, fp, fn, tp = cm.ravel()
+    st.markdown(f"""
+**True Negatives (TN):** {tn}  
+**False Positives (FP):** {fp}  
+**False Negatives (FN):** {fn}  
+**True Positives (TP):** {tp}
+""")
+
+
+# ────────────────────────────
+# 4) Churn Prediction
+# ────────────────────────────
+elif page == "📈 Churn Prediction":
+    st.title("Demo: Churn-Probability")
+    st.markdown("Sample a few customers and plot their churn probability over tenure.")
+    n = st.slider("Sample size", 10, 500, 100)
+    df0 = process_data(load_data()).sample(n).reset_index(drop=True)
+    p_data = process_data(load_data())
+    calc_churn_probability(df0, p_data, lr_model, nn_churn)
+    st.line_chart(df0["churn_prob"])
+
+# ──────────────────────────────────────────────────────────────────────────
+# Retention Strategy Simulator (always compare all three)
+# ──────────────────────────────────────────────────────────────────────────
+else:
+    st.title("Retention Strategy Simulator")
+
+    # 1) load & sample once
+    processed_df = process_data(load_data())
+    n = st.slider("Population size", 100, 2000, 500)
+    df0 = processed_df.sample(n, random_state=0).reset_index(drop=True)
+
+    # 2) baseline churn‐prob & rem‐life
+    calc_churn_probability(df0, processed_df, lr_model, nn_churn)
+    R0 = cond_remaining_hybrid(df0, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
+    rev0 = ((1 - df0["churn_prob"]) * df0["MonthlyCharges"] * R0).sum()
+
+    # 3) build three “apply” functions
+    apply_full = lambda df: apply_retention_full(df.copy(), θ_full, kmeans)
+    apply_contract = lambda df: apply_retention_contract(df.copy(), θ_contract, kmeans)
+    apply_merged = lambda df: apply_retention_contract(
+                                apply_retention_full(df.copy(), θ_full, kmeans),
+                                θ_contract,
+                                kmeans
+                             )
+
+    mask = df0["churn_pred"] == 1
+
+    # 4) helper to compute metrics for a single strategy
+    def compute_metrics(name, apply_fn):
+
+        sub = df0.copy()
+        sub.loc[mask] = apply_fn(sub.loc[mask])
+
+        # recompute churn & rem‐life AFTER
+        calc_churn_probability(sub, processed_df, lr_model, nn_churn)
+        R1 = cond_remaining_hybrid(sub, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
+
+        # revenues
+        rev1 = ((1 - sub["churn_prob"]) * sub["MonthlyCharges"] * R1).sum()
+
+        # toggle‐costs delta over horizon
+        tog_cols   = list(toggle_costs.keys())
+        cost_s     = pd.Series(toggle_costs, dtype=np.float32)
+        before_mat = df0.loc[mask, tog_cols]
+        after_mat  = sub.loc[mask, tog_cols]
+        cost_before= before_mat.mul(cost_s, axis=1).sum(axis=1)
+        cost_after = after_mat .mul(cost_s, axis=1).sum(axis=1)
+        tog_loss   = (cost_after - cost_before) * R1[mask]
+        total_tog  = tog_loss.sum()
+
+        # net gain & budgets
+        net_gain   = (rev1 - rev0) - total_tog
+        profit_post= rev1 - total_tog
+        budget_pc   = net_gain / mask.sum()
+        avg_rem     = R0[mask].mean()
+        monthly_budget_pc = budget_pc / avg_rem
+        max_disc_pct = monthly_budget_pc / df0["MonthlyCharges"].mean() * 100
+
+        return {
+            "Strategy":         name,
+            "Profit before":    rev0,
+            "Profit after":     profit_post,
+            "Net gain":         net_gain,
+            "Flagged churners": int((df0["churn_pred"]==1).sum()),
+            "Max discount %":   max_disc_pct,
+        }
+
+    # 5) compute all three
+    results = [
+        compute_metrics("Full multi-head",   apply_full),
+        compute_metrics("Contract-only",     apply_contract),
+        compute_metrics("Merged full→contr", apply_merged),
+    ]
+
+    # 6) display side-by-side
+    df_res = pd.DataFrame(results).set_index("Strategy")
+    st.subheader("Compare all three strategies on the same sample")
+    st.dataframe(
+        df_res.style.format({
+            "Profit before":    "${:,.0f}",
+            "Profit after":     "${:,.0f}",
+            "Net gain":         "${:,.0f}",
+            "Flagged churners": "{:d}",
+            "Max discount %":   "{:.1f}%"
+        })
+    )
+
