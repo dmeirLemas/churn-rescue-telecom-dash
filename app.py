@@ -118,6 +118,223 @@ elif page == "🗂️ Data":
     sns.heatmap(corr, cmap="coolwarm", center=0, linewidths=0.5, ax=ax)
     st.pyplot(fig)
 
+    # ── 8 Churn by Contract Type ────────────────────────────────────────────────
+    st.subheader("Churn by Contract Type")
+    monthly = df[df["Contract"] == 1]
+    yearly = df[df["Contract"] == 2]
+    two_years = df[df["Contract"] == 3]
+    churned = df[df["Churn"] == 1]
+    # Set up the figure with 3 subplots side by side
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
+
+    # First plot: Monthly contract
+    axes[0].hist(monthly["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[0].set_title("Monthly Contract")
+    axes[0].set_xticks([0, 1])
+    axes[0].set_xticklabels(["Not Churned", "Churned"])
+    axes[0].set_xlabel("Churn")
+    axes[0].set_ylabel("Number of Users")
+
+    # Second plot: Yearly contract
+    axes[1].hist(yearly["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[1].set_title("Yearly Contract")
+    axes[1].set_xticks([0, 1])
+    axes[1].set_xticklabels(["Not Churned", "Churned"])
+    axes[1].set_xlabel("Churn")
+    axes[1].set_ylabel("Number of Users")
+
+    # Third plot: Two years contract
+    axes[2].hist(two_years["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[2].set_title("Two Years Contract")
+    axes[2].set_xticks([0, 1])
+    axes[2].set_xticklabels(["Not Churned", "Churned"])
+    axes[2].set_xlabel("Churn")
+    axes[2].set_ylabel("Number of Users")
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.clf()
+
+    # ── 9) Churn for each Payment Method ─────────────────────────────────────────────
+    st.subheader("Churn by Payment Method")
+    electronic_check = df[df["PaymentMethod"] == 1]
+    mailed_check = df[df["PaymentMethod"] == 2]
+    bank_transfer = df[df["PaymentMethod"] == 3]
+    credit_card = df[df["PaymentMethod"] == 4]
+    # Then, plot 4 histograms side-by-side
+    fig, axes = plt.subplots(1, 4, figsize=(22, 5))
+    # Plot for Electronic Check
+    axes[0].hist(electronic_check["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[0].set_title("Electronic Check")
+    axes[0].set_xticks([0, 1])
+    axes[0].set_xticklabels(["Not Churned", "Churned"])
+    axes[0].set_xlabel("Churn")
+    axes[0].set_ylabel("Number of Users")
+    # Plot for Mailed Check
+    axes[1].hist(mailed_check["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[1].set_title("Mailed Check")
+    axes[1].set_xticks([0, 1])
+    axes[1].set_xticklabels(["Not Churned", "Churned"])
+    axes[1].set_xlabel("Churn")
+    axes[1].set_ylabel("Number of Users")
+    # Plot for Bank Transfer
+    axes[2].hist(bank_transfer["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[2].set_title("Bank Transfer (Automatic)")
+    axes[2].set_xticks([0, 1])
+    axes[2].set_xticklabels(["Not Churned", "Churned"])
+    axes[2].set_xlabel("Churn")
+    axes[2].set_ylabel("Number of Users")
+    # Plot for Credit Card
+    axes[3].hist(credit_card["Churn"], bins=[-0.5, 0.5, 1.5], edgecolor='black', rwidth=0.8)
+    axes[3].set_title("Credit Card (Automatic)")
+    axes[3].set_xticks([0, 1])
+    axes[3].set_xticklabels(["Not Churned", "Churned"])
+    axes[3].set_xlabel("Churn")
+    axes[3].set_ylabel("Number of Users")
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.clf()
+
+    # ── 10) Churn by Monthly Charges ─────────────────────────────────────────────
+    st.subheader("Churn by Monthly Charges")
+    sns.set_context("paper", font_scale=1.1)
+
+    # Create the plot
+    plt.figure(figsize=(10, 6))
+    ax = sns.kdeplot(
+        data=df, x="MonthlyCharges", hue="Churn", fill=True,
+        palette=["red", "blue"], common_norm=False, alpha=0.5
+    )
+
+    # Customize plot
+    ax.legend(["Churn", "Not Churn"], loc='upper right')
+    ax.set_ylabel('Density')
+    ax.set_xlabel('Monthly Charges')
+    ax.set_title('Distribution of Monthly Charges by Churn')
+
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.clf()
+
+    df["MonthlyChargeGroup"] = pd.cut(df["MonthlyCharges"], bins=[0, 35, 70, 150], labels=["Low", "Medium", "High"])
+    # Now group by MonthlyChargeGroup and Churn
+    monthly_charge_churn = df.groupby(["MonthlyChargeGroup", "Churn"]).size().unstack()
+
+    # Plot
+    monthly_charge_churn.plot(kind="bar", edgecolor="black", figsize=(10,6))
+
+    plt.title("Number of Customers by Monthly Charge Group and Churn Status")
+    plt.xlabel("Monthly Charge Group")
+    plt.ylabel("Number of Customers")
+    plt.xticks(rotation=0)
+    plt.legend(["Not Churned", "Churned"], title="Churn Status")
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.clf()
+
+    # ── 11 Churn rate Dependents, Partner & Senior Citizen ───────────────
+    st.subheader("Churn Rate by Dependents, Partner & Senior Citizen")
+    no_dependents = df[df["Dependents"] == 0]
+    has_dependents = df[df["Dependents"] == 1]
+    # Partner
+    no_partner = df[df["Partner"] == 0]
+    has_partner = df[df["Partner"] == 1]
+    # Senior Citizen
+    not_senior = df[df["SeniorCitizen"] == 0]
+    senior_citizen = df[df["SeniorCitizen"] == 1]
+    # Now plot side-by-side histograms
+    fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+
+    # Plot 1: Dependents vs Churn
+    axes[0].hist([no_dependents["Churn"], has_dependents["Churn"]], 
+                bins=[-0.5, 0.5, 1.5], label=["No Dependents", "Has Dependents"], 
+                edgecolor="black", rwidth=0.8)
+    axes[0].set_title("Churn by Dependents")
+    axes[0].set_xticks([0, 1])
+    axes[0].set_xticklabels(["Not Churned", "Churned"])
+    axes[0].set_xlabel("Churn")
+    axes[0].set_ylabel("Number of Users")
+    axes[0].legend()
+
+    # Plot 2: Partner vs Churn
+    axes[1].hist([no_partner["Churn"], has_partner["Churn"]], 
+                bins=[-0.5, 0.5, 1.5], label=["No Partner", "Has Partner"], 
+                edgecolor="black", rwidth=0.8)
+    axes[1].set_title("Churn by Partner")
+    axes[1].set_xticks([0, 1])
+    axes[1].set_xticklabels(["Not Churned", "Churned"])
+    axes[1].set_xlabel("Churn")
+    axes[1].set_ylabel("Number of Users")
+    axes[1].legend()
+
+    # Plot 3: Senior Citizen vs Churn
+    axes[2].hist([not_senior["Churn"], senior_citizen["Churn"]], 
+                bins=[-0.5, 0.5, 1.5], label=["Not Senior", "Senior Citizen"], 
+                edgecolor="black", rwidth=0.8)
+    axes[2].set_title("Churn by Senior Citizen")
+    axes[2].set_xticks([0, 1])
+    axes[2].set_xticklabels(["Not Churned", "Churned"])
+    axes[2].set_xlabel("Churn")
+    axes[2].set_ylabel("Number of Users")
+    axes[2].legend()
+
+    plt.tight_layout()
+    st.pyplot(fig)
+    plt.clf()
+
+    # ── 12 Churn by Tenure ─────────────────────────────────────────────
+    st.subheader("Churn by Tenure")
+    df["TenureGroup"] = pd.cut(df["tenure"], bins=[0, 12, 48, 72], labels=["0-12 months", "1-4 years", "4-6 years"])
+
+    # Calculate churn rate by tenure group
+    churn_rates_tenure = df.groupby("TenureGroup")["Churn"].mean()
+    # Now number of churned vs not churned customers per group
+    tenure_churn = df.groupby(["TenureGroup", "Churn"]).size().unstack()
+
+    # Plot the churned vs not churned counts
+    tenure_churn.plot(kind="bar", edgecolor="black", figsize=(10,6))
+
+    plt.title("Churn by Tenure Group")
+    plt.xlabel("Tenure Group")
+    plt.ylabel("Number of Customers")
+    plt.xticks(rotation=0)
+    plt.legend(["Not Churned", "Churned"], title="Churn Status")
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.clf()
+
+    # -- 13 Churn by number of services ─────────────────────────────────────
+    st.subheader("Churn by Number of Services")
+    service_columns = [
+    "PhoneService", "MultipleLines", "OnlineSecurity", "OnlineBackup", 
+    "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies"
+    ]
+
+    # Create a new column: Internet as a service (1 if has internet, 0 if no)
+    df["HasInternetService"] = df["InternetService"].apply(lambda x: 0 if x == 0 else 1)
+
+    # Now add 'HasInternetService' to the list of service features
+    all_service_columns = service_columns + ["HasInternetService"]
+
+    # Calculate the number of services each customer has
+    df["NumServices"] = df[all_service_columns].sum(axis=1)
+
+    # Group by number of services and calculate churn rate
+    churn_rate_by_services = df.groupby("NumServices")["Churn"].mean()
+    # Plot
+    plt.figure(figsize=(8,6))
+    churn_rate_by_services.plot(kind="bar", edgecolor='black')
+
+    plt.title("Churn Rate by Number of Services ")
+    plt.xlabel("Number of Services")
+    plt.ylabel("Churn Rate")
+    plt.ylim(0, 1)
+    plt.tight_layout()
+    st.pyplot(plt)
+    plt.clf()
+
+
 
 
 # ────────────────────────────
