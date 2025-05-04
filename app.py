@@ -120,9 +120,9 @@ elif page == "🗂️ Data":
 
     # ── 8 Churn by Contract Type ────────────────────────────────────────────────
     st.subheader("Churn by Contract Type")
-    monthly = df[df["Contract"] == 1]
-    yearly = df[df["Contract"] == 2]
-    two_years = df[df["Contract"] == 3]
+    monthly = df[df["Contract_Month-to-month"] == 1]
+    yearly = df[(df["Contract_Two year"] == 0) & (df["Contract_Month-to-month"] == 1)]
+    two_years = df[df["Contract_Two year"] == 1]
     churned = df[df["Churn"] == 1]
     # Set up the figure with 3 subplots side by side
     fig, axes = plt.subplots(1, 3, figsize=(18, 5))
@@ -156,11 +156,15 @@ elif page == "🗂️ Data":
     plt.clf()
 
     # ── 9) Churn for each Payment Method ─────────────────────────────────────────────
+    mask1 = df['PaymentMethod_Bank transfer (automatic)'] == 1
+    mask2 = df['PaymentMethod_Credit card (automatic)'] == 1
+    mask3 = df['PaymentMethod_Electronic check'] == 1
+    
     st.subheader("Churn by Payment Method")
-    electronic_check = df[df["PaymentMethod"] == 1]
-    mailed_check = df[df["PaymentMethod"] == 2]
-    bank_transfer = df[df["PaymentMethod"] == 3]
-    credit_card = df[df["PaymentMethod"] == 4]
+    electronic_check = df[mask3]
+    mailed_check = df[~mask1 & ~mask2 & ~mask3]
+    bank_transfer = df[mask1]
+    credit_card = df[mask2]
     # Then, plot 4 histograms side-by-side
     fig, axes = plt.subplots(1, 4, figsize=(22, 5))
     # Plot for Electronic Check
@@ -304,35 +308,41 @@ elif page == "🗂️ Data":
     st.pyplot(plt)
     plt.clf()
 
-    # -- 13 Churn by number of services ─────────────────────────────────────
-    st.subheader("Churn by Number of Services")
-    service_columns = [
-    "PhoneService", "MultipleLines", "OnlineSecurity", "OnlineBackup", 
-    "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies"
+    # ─────────────────────────────────────────────────────────────────────────────
+    # 13) Churn by Number of Services
+    # ─────────────────────────────────────────────────────────────────────────────
+    st.subheader("Churn Rate by Number of Services")
+
+    # the “yes” columns from process_data
+    service_cols = [
+        "PhoneService",
+        "MultipleLines_Yes",
+        "OnlineSecurity_Yes",
+        "OnlineBackup_Yes",
+        "DeviceProtection_Yes",
+        "TechSupport_Yes",
+        "StreamingTV_Yes",
+        "StreamingMovies_Yes",
     ]
 
-    # Create a new column: Internet as a service (1 if has internet, 0 if no)
-    df["HasInternetService"] = df["InternetService"].apply(lambda x: 0 if x == 0 else 1)
+    # 1) Make sure we’re working off the processed df
+    df = process_data(load_data()).copy()
 
-    # Now add 'HasInternetService' to the list of service features
-    all_service_columns = service_columns + ["HasInternetService"]
+    # 2) Build a “HasInternet” flag from the two dummies
+    df["HasInternetService"] = (
+        (df["InternetService_DSL"] == 1) |
+        (df["InternetService_Fiber optic"] == 1)
+    ).astype(int)
 
-    # Calculate the number of services each customer has
-    df["NumServices"] = df[all_service_columns].sum(axis=1)
+    # 3) Count total services per customer
+    df["NumServices"] = df[service_cols].sum(axis=1) + df["HasInternetService"]
 
-    # Group by number of services and calculate churn rate
+    # 4) Compute churn‐rate per bucket
     churn_rate_by_services = df.groupby("NumServices")["Churn"].mean()
-    # Plot
-    plt.figure(figsize=(8,6))
-    churn_rate_by_services.plot(kind="bar", edgecolor='black')
 
-    plt.title("Churn Rate by Number of Services ")
-    plt.xlabel("Number of Services")
-    plt.ylabel("Churn Rate")
-    plt.ylim(0, 1)
-    plt.tight_layout()
-    st.pyplot(plt)
-    plt.clf()
+    # 5) Plot with streamlit
+    st.bar_chart(churn_rate_by_services)
+
 
 
 
