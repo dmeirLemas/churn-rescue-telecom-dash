@@ -12,6 +12,8 @@ from churn_utils.retention import (
     apply_retention_contract
 )
 
+from churn_utils.churn import upd
+
 # ────────────────────────────
 # 0) Load everything once
 # ────────────────────────────
@@ -38,15 +40,46 @@ page = st.sidebar.radio("Go to", [
 # 1) Overview
 # ────────────────────────────
 if page == "📊 Overview":
-    st.title("Telecom Churn & Retention — Overview")
+    st.title("📊 Telecom Churn & Retention — Overview")
+
     st.markdown("""
-    **Project guide**  
-    1. Data sources & summary  
-    2. Our churn‐prediction approach  
-    3. Two retention strategies  
-    4. Simulation results & ROI  
+    Welcome to the *Telecom Churn & Retention* dashboard. This overview introduces the primary components of our project:
+
+    - *Data Sources & Summary*
+    - *Our Churn-Prediction Approach*
+    - *Two Retention Strategies*
+
+    Use the sidebar to navigate to detailed sections for each part.
     """)
-    # add any static markdown / images you like
+
+    st.markdown("---")
+
+    st.subheader("Data Sources & Summary")
+    st.markdown("""
+    - **Customer Records**: demographics, account details, service usage, billing history  
+    - **Complaint Logs**: text transcripts used for sentiment analysis  
+    - **Churn Labels**: binary indicator for customer churn within the observation window
+    """)
+
+    st.markdown("---")
+
+    st.subheader("Our Churn-Prediction Approach")
+    st.markdown("""
+    1. **Feature Engineering**: service counts, tenure buckets, payment patterns, complaint sentiment  
+    2. **Model Training**: Logistic Regression for decision making on churn-risk customers
+    3. **Evaluation**: Precision, recall, F1, AUC
+    """)
+
+    st.markdown("---")
+
+    st.subheader("Two Retention Strategies")
+    st.markdown("""
+    **Strategy A: Internet Service Change and Extra Services**  
+    - Provide the customer with extra services and promote the change to the DSL service.
+
+    **Strategy B: Contract Upgrade**  
+    - Upgrade the length of the contract with discount with respect to previous contract.
+    """)
 
 # ────────────────────────────
 # 2) Data
@@ -488,85 +521,152 @@ elif page == "📈 Churn Prediction":
 # ──────────────────────────────────────────────────────────────────────────
 else:
     st.title("Retention Strategy Simulator")
-
     # 1) load & sample once
     processed_df = process_data(load_data())
     n = st.slider("Population size", 100, 2000, 500)
     df0 = processed_df.sample(n).reset_index(drop=True)
 
-    # 2) baseline churn‐prob & rem‐life
-    calc_churn_probability(df0, processed_df, lr_model, nn_churn)
-    R0 = cond_remaining_hybrid(df0, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
-    rev0 = ((1 - df0["churn_prob"]) * df0["MonthlyCharges"] * R0).sum()
-
-    # 3) build three “apply” functions
-    apply_full = lambda df: apply_retention_full(df.copy(), θ1_full,θ2_full, kmeans)
+    # 2) build three “apply” functions
+    apply_full = lambda df: apply_retention_full(df.copy(), θ1_full, θ2_full, kmeans)
     apply_contract = lambda df: apply_retention_contract(df.copy(), θ_contract, kmeans)
     apply_merged = lambda df: apply_retention_contract(
                                 apply_retention_full(df.copy(), θ1_full, θ2_full, kmeans),
                                 θ_contract,
-                                kmeans
-                             )
+                                kmeans)
 
-    mask = df0["churn_pred"] == 1
+    # BUTTON 1: the “strategy‐comparison” block
+    if st.button("Run Strategy Simulator"):
+        calc_churn_probability(df0, processed_df, lr_model, nn_churn)
+        R0 = cond_remaining_hybrid(df0, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
+        rev0 = ((1 - df0["churn_prob"]) * df0["MonthlyCharges"] * R0).sum()
 
-    # 4) helper to compute metrics for a single strategy
-    def compute_metrics(name, apply_fn):
+        mask = df0["churn_pred"] == 1
 
-        sub = df0.copy()
-        sub.loc[mask] = apply_fn(sub.loc[mask])
+        # 4) helper to compute metrics for a single strategy
+        def compute_metrics(name, apply_fn):
+            sub = df0.copy()
+            sub.loc[mask] = apply_fn(sub.loc[mask])
 
-        # recompute churn & rem‐life AFTER
-        calc_churn_probability(sub, processed_df, lr_model, nn_churn)
-        R1 = cond_remaining_hybrid(sub, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
+            calc_churn_probability(sub, processed_df, lr_model, nn_churn)
+            R1 = cond_remaining_hybrid(sub, processed_df, lr_model, nn_churn, kmeans, max_horizon=18)
+            rev1 = ((1 - sub["churn_prob"]) * sub["MonthlyCharges"] * R1).sum()
 
-        # revenues
-        rev1 = ((1 - sub["churn_prob"]) * sub["MonthlyCharges"] * R1).sum()
+            tog_cols   = list(toggle_costs.keys())
+            cost_s     = pd.Series(toggle_costs, dtype=np.float32)
+            before_mat = df0.loc[mask, tog_cols]
+            after_mat  = sub.loc[mask, tog_cols]
+            cost_before= before_mat.mul(cost_s, axis=1).sum(axis=1)
+            cost_after = after_mat .mul(cost_s, axis=1).sum(axis=1)
+            tog_loss   = (cost_after - cost_before) * R1[mask]
+            total_tog  = tog_loss.sum()
 
-        # toggle‐costs delta over horizon
-        tog_cols   = list(toggle_costs.keys())
-        cost_s     = pd.Series(toggle_costs, dtype=np.float32)
-        before_mat = df0.loc[mask, tog_cols]
-        after_mat  = sub.loc[mask, tog_cols]
-        cost_before= before_mat.mul(cost_s, axis=1).sum(axis=1)
-        cost_after = after_mat .mul(cost_s, axis=1).sum(axis=1)
-        tog_loss   = (cost_after - cost_before) * R1[mask]
-        total_tog  = tog_loss.sum()
+            net_gain        = (rev1 - rev0) - total_tog
+            profit_post     = rev1 - total_tog
+            budget_pc       = net_gain / mask.sum()
+            avg_rem         = R0[mask].mean()
+            monthly_budget  = budget_pc / avg_rem
+            max_disc_pct    = monthly_budget / df0["MonthlyCharges"].mean() * 100
 
-        # net gain & budgets
-        net_gain   = (rev1 - rev0) - total_tog
-        profit_post= rev1 - total_tog
-        budget_pc   = net_gain / mask.sum()
-        avg_rem     = R0[mask].mean()
-        monthly_budget_pc = budget_pc / avg_rem
-        max_disc_pct = monthly_budget_pc / df0["MonthlyCharges"].mean() * 100
+            return {
+                "Strategy":         name,
+                "Profit before":    rev0,
+                "Profit after":     profit_post,
+                "Net gain":         net_gain,
+                "Flagged churners": int(mask.sum()),
+                "Max discount %":   max_disc_pct,
+            }
 
-        return {
-            "Strategy":         name,
-            "Profit before":    rev0,
-            "Profit after":     profit_post,
-            "Net gain":         net_gain,
-            "Flagged churners": int((df0["churn_pred"]==1).sum()),
-            "Max discount %":   max_disc_pct,
-        }
+        # 5) compute all three
+        results = [
+            compute_metrics("Full multi-head",   apply_full),
+            compute_metrics("Contract-only",     apply_contract),
+            compute_metrics("Merged full→contr", apply_merged),
+        ]
 
-    # 5) compute all three
-    results = [
-        compute_metrics("Full multi-head",   apply_full),
-        compute_metrics("Contract-only",     apply_contract),
-        compute_metrics("Merged full→contr", apply_merged),
-    ]
+        # 6) display side-by-side
+        df_res = pd.DataFrame(results).set_index("Strategy")
+        st.subheader("Compare all three strategies on the same sample")
+        st.dataframe(
+            df_res.style.format({
+                "Profit before":    "${:,.0f}",
+                "Profit after":     "${:,.0f}",
+                "Net gain":         "${:,.0f}",
+                "Flagged churners": "{:d}",
+                "Max discount %":   "{:.1f}%"
+            })
+        )
 
-    # 6) display side-by-side
-    df_res = pd.DataFrame(results).set_index("Strategy")
-    st.subheader("Compare all three strategies on the same sample")
-    st.dataframe(
-        df_res.style.format({
-            "Profit before":    "${:,.0f}",
-            "Profit after":     "${:,.0f}",
-            "Net gain":         "${:,.0f}",
-            "Flagged churners": "{:d}",
-            "Max discount %":   "{:.1f}%"
-        })
-    )
+
+    # BUTTON 2: the “simulate vs no‐simulate” block
+    if st.button("Run Retention vs No‐Retention Simulation"):
+
+        # recompute processed_df for isolation
+        processed_df = process_data(load_data())
+        delta_cost = pd.DataFrame.from_dict({"d": [0 for _ in range(300)]})
+
+        def simulate_tick_real(cus_base):
+            global delta_cost
+            calc_churn_probability(cus_base, processed_df, lr_model, nn_churn)
+            mask = (cus_base["churn_pred"]==1) & (cus_base["retent"]==0)
+            df_before = cus_base.loc[mask].copy()
+
+            if not df_before.empty:
+                offered = apply_merged(df_before.copy())
+                offered["retent"] = 1
+                calc_churn_probability(offered, processed_df, lr_model, nn_churn)
+                cus_base.loc[mask, offered.columns] = offered
+
+            tog_cols = list(toggle_costs.keys())
+            cost_s   = pd.Series(toggle_costs, dtype=np.float32)
+            cost_before = df_before[tog_cols].mul(cost_s, axis=1).sum(axis=1)
+            cost_after  = cus_base.loc[mask, tog_cols].mul(cost_s, axis=1).sum(axis=1)
+            tog_loss    = (cost_after - cost_before)
+            delta_cost.loc[mask, "d"] = tog_loss
+
+            tick_rev     = cus_base["MonthlyCharges"].sum() - delta_cost["d"].sum()
+
+            randoms   = np.random.rand(len(cus_base))
+            churned   = randoms < cus_base["churn_prob"]
+            cus_base  = cus_base.loc[~churned].reset_index(drop=True)
+            delta_cost= delta_cost.loc[~churned].reset_index(drop=True)
+
+            cus_base = upd(cus_base, processed_df, kmeans)
+
+            return tick_rev, cus_base
+
+        def simulate_tick_fake(cus_base):
+            tick_rev = cus_base["MonthlyCharges"].sum()
+            calc_churn_probability(cus_base, processed_df, lr_model, nn_churn)
+            randoms   = np.random.rand(len(cus_base))
+            churned   = randoms < cus_base["churn_prob"]
+            cus_base  = cus_base.loc[~churned].reset_index(drop=True)
+            cus_base  = upd(cus_base, processed_df, kmeans)
+            return tick_rev, cus_base
+
+        # run 12 ticks for each scenario
+        cum_real = []
+        cum_no   = []
+        rev_real = rev_no = 0
+
+        # initialize
+        base_real = process_data(load_data()).sample(300).reset_index(drop=True)
+        base_real["retent"] = 0
+        base_no   = base_real.copy()
+
+        for _ in range(18):
+            r, base_real = simulate_tick_real(base_real)
+            rev_real   += r
+            cum_real.append(rev_real)
+
+            r1, base_no = simulate_tick_fake(base_no)
+            rev_no     += r1
+            cum_no.append(rev_no)
+
+        # plot
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots()
+        ax.plot(cum_no, label="No Retention")
+        ax.plot(cum_real, label="With Retention")
+        ax.legend()
+        st.pyplot(fig)
 
