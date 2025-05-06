@@ -344,9 +344,6 @@ elif page == "🗂️ Data":
     st.bar_chart(churn_rate_by_services)
 
 
-
-
-
 # ────────────────────────────
 # 3) Model
 # ────────────────────────────
@@ -404,27 +401,87 @@ elif page == "🤖 Model":
     ax.set_title("Confusion Matrix")
     st.pyplot(fig)
 
-    # And raw counts for clarity
-    tn, fp, fn, tp = cm.ravel()
-    st.markdown(f"""
-**True Negatives (TN):** {tn}  
-**False Positives (FP):** {fp}  
-**False Negatives (FN):** {fn}  
-**True Positives (TP):** {tp}
-""")
 
-
-# ────────────────────────────
-# 4) Churn Prediction
-# ────────────────────────────
 elif page == "📈 Churn Prediction":
-    st.title("Demo: Churn-Probability")
-    st.markdown("Sample a few customers and plot their churn probability over tenure.")
-    n = st.slider("Sample size", 10, 500, 100)
-    df0 = process_data(load_data()).sample(n).reset_index(drop=True)
-    p_data = process_data(load_data())
-    calc_churn_probability(df0, p_data, lr_model, nn_churn)
-    st.line_chart(df0["churn_prob"])
+
+    st.markdown("---")
+    st.subheader("🔍 Predict Churn for a Custom Customer")
+
+    with st.expander("Enter customer features manually"):
+
+        # Base profile
+        gender = st.selectbox("Gender", ["Male", "Female"])
+        senior = st.selectbox("Senior Citizen", [0, 1])
+        partner = st.selectbox("Has Partner?", ["Yes", "No"])
+        dependents = st.selectbox("Has Dependents?", ["Yes", "No"])
+        tenure = st.slider("Tenure (months)", 0, 72, 12)
+
+        # Billing
+        monthly = st.number_input("Monthly Charges", min_value=10.0, max_value=200.0, value=70.0)
+        total = st.number_input("Total Charges", min_value=10.0, max_value=15000.0, value=800.0)
+        paperless = st.selectbox("Paperless Billing", ["Yes", "No"])
+        complaint = st.slider("Complaint Score", 0.0, 10.0, 0.0)
+
+        # Contract & payment
+        contract = st.selectbox("Contract", ["Month-to-month", "One year", "Two year"])
+        payment = st.selectbox("Payment Method", [
+            "Bank transfer (automatic)", "Credit card (automatic)", "Electronic check", "Mailed check"
+        ])
+
+        # Internet + Phone
+        phone = st.selectbox("Phone Service", ["Yes", "No"])
+        internet = st.selectbox("Internet Service", ["No", "DSL", "Fiber optic"])
+        multiple_lines = st.selectbox("Multiple Lines", ["No", "Yes", "No phone service"])
+
+        # Optional services
+        online_sec = st.selectbox("Online Security", ["No", "Yes", "No internet service"])
+        online_backup = st.selectbox("Online Backup", ["No", "Yes", "No internet service"])
+        device_prot = st.selectbox("Device Protection", ["No", "Yes", "No internet service"])
+        tech_support = st.selectbox("Tech Support", ["No", "Yes", "No internet service"])
+        streaming_tv = st.selectbox("Streaming TV", ["No", "Yes", "No internet service"])
+        streaming_movies = st.selectbox("Streaming Movies", ["No", "Yes", "No internet service"])
+
+    if st.button("Predict Churn"):
+        # Build dictionary of values
+        input_dict = {
+            "gender": gender,
+            "SeniorCitizen": senior,
+            "Partner": partner,
+            "Dependents": dependents,
+            "tenure": tenure,
+            "MonthlyCharges": monthly,
+            "TotalCharges": total,
+            "PaperlessBilling": paperless,
+            "complaintScore": complaint,
+            "Contract": contract,
+            "PaymentMethod": payment,
+            "PhoneService": phone,
+            "InternetService": internet,
+            "MultipleLines": multiple_lines,
+            "OnlineSecurity": online_sec,
+            "OnlineBackup": online_backup,
+            "DeviceProtection": device_prot,
+            "TechSupport": tech_support,
+            "StreamingTV": streaming_tv,
+            "StreamingMovies": streaming_movies
+        }
+
+        # Create single-row DF and merge with a default row to ensure all columns are available
+        raw_df = load_data().iloc[:1].copy()
+        for col in input_dict:
+            raw_df[col] = input_dict[col]
+
+        # Pass through your full data processor (handles dummies, cluster, feature engineering)
+        processed = process_data(raw_df)
+
+        # Recompute churn prediction
+        calc_churn_probability(processed, process_data(load_data()), lr_model, nn_churn)
+        prob = float(processed["churn_prob"].iloc[0])
+        pred = int(processed["churn_pred"].iloc[0])
+
+        st.success(f"Predicted churn probability for next tick: **{prob:.2%}**")
+        st.write(f"Prediction: {'Will Churn' if pred else 'Will Stay'}")
+
 
 # ──────────────────────────────────────────────────────────────────────────
 # Retention Strategy Simulator (always compare all three)
