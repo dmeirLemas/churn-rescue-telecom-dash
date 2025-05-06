@@ -2,6 +2,10 @@
 
 KAGGLE NOTEBOOK: https://www.kaggle.com/code/demirelmas/hacklab-sim
 
+## OR YOU COULD JUST GO TO THE WEBSITE TO VIEW THE DASHBOARD
+
+DASHBOARD URL: https://hacklab6foot6.streamlit.app/
+
 ## 📁 Project Structure
 
 ```
