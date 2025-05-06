@@ -1,5 +1,7 @@
 # 📄 Project Documentation: Churn Rescue & Retention Optimization
 
+KAGGLE NOTEBOOK: https://www.kaggle.com/code/demirelmas/hacklab-sim
+
 ## 📁 Project Structure
 
 ```
