@@ -1,73 +1,113 @@
-# Welcome to your Lovable project
+# 📄 Project Documentation: Churn Rescue & Retention Optimization
 
-## Project info
+## 📁 Project Structure
 
-**URL**: https://lovable.dev/projects/72b32806-d205-4487-9521-4f3d4ce5368d
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/72b32806-d205-4487-9521-4f3d4ce5368d) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+project_root/
+│
+├── app.py                     # Main Streamlit dashboard app
+├── churn_utils/              # All Python helper modules
+│   ├── __init__.py
+│   ├── retention.py
+│   ├── modeling.py
+│   ├── processing.py
+│   └── ... (others)
+├── theta.npy                 # Multi-head retention weights
+├── theta_rename.npy          # Additional head (for services or internet)
+├── kmeans.pkl                # Pretrained KMeans clustering model
+├── lr_model.pkl              # Trained LogisticRegression model
+├── nn_churn.pkl              # Trained NearestNeighbors churn model
+├── btUTgX.xlsx               # Main customer data
+├── newdataset2.csv           # Complaint dataset
+├── requirements.txt
+└── README.md                 # ← (this file)
 ```
 
-**Edit a file directly in GitHub**
+---
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 🛠️ Requirements
 
-**Use GitHub Codespaces**
+Create a virtual environment and install dependencies:
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```bash
+python3 -m venv env
+source env/bin/activate  # or .\env\Scripts\activate on Windows
 
-## What technologies are used for this project?
+pip install -r requirements.txt
+```
 
-This project is built with:
+### `requirements.txt` contents:
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```txt
+streamlit
+pandas
+numpy
+scikit-learn
+xgboost
+seaborn
+matplotlib
+imblearn
+joblib
+scipy
+nltk
+openpyxl
+```
 
-## How can I deploy this project?
+> 🔹 *Note:* For sentiment scoring in complaints, `nltk` and `vaderSentiment` (or `nltk.sentiment.vader`) are required. Run:
+```bash
+python -m nltk.downloader vader_lexicon
+```
 
-Simply open [Lovable](https://lovable.dev/projects/72b32806-d205-4487-9521-4f3d4ce5368d) and click on Share -> Publish.
+---
 
-## Can I connect a custom domain to my Lovable project?
+## 🚀 Running the App
 
-Yes, you can!
+From the root directory:
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+```bash
+streamlit run app.py
+```
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+Your dashboard will launch in the browser with multiple pages:
+- 🗂️ **Data** — View raw and processed samples, feature distributions
+- 🤖 **Model** — View LR model coefficients and performance (precision/recall/F1/AUC)
+- 🧪 **Retention Simulator** — Apply and compare strategies
+- 📊 **Churn Insights** — Service counts vs. churn, cluster breakdowns
+- 📈 **Profit Simulator** — Revenue and cost analysis under different strategies
+
+---
+
+## 📌 Notes on Key Components
+
+### 1. **Retention Models**
+- **Multi-head model** (`theta.npy`) and (`theta_rename.npy`) applies discounts, services, and internet changes.
+- **Contract-only model** (`theta_contract.npy`) changes contract type based on tenure and eligibility.
+- A **merged model** applies both in sequence.
+
+### 2. **Key Retention Rules**
+- Contract changes only apply if:
+  - Tenure ≥ 4 months
+  - No downgrade is allowed
+- Services are turned on if Internet is available
+- Dropping fiber reduces MonthlyCharges by a one-time 25 unit
+
+### 3. **Data Loading**
+The main dataset is `btUTgX.xlsx` and complaints are in `newdataset2.csv`. These are merged by `customerID`.
+
+### 4. **Training and Evaluation**
+- `lr_model.pkl` is trained.
+- Confusion matrix and classification reports are shown in the dashboard.
+
+---
+
+
+## ✅ Final Checklist Before Running
+
+- [x] Activate virtual environment  
+- [x] Run `streamlit run app.py`  
+- [x] Ensure `theta.npy`, `theta_rename.npy`, `theta.npy`, and models are in root  
+- [x] Confirm that `kmeans.pkl`, `lr_model.pkl`, `nn_churn.pkl` exist  
+- [x] Data files (`btUTgX.xlsx` & `newdataset2.csv`) are in root  
+
+---
+

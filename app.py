@@ -20,7 +20,7 @@ xgb_model, lr_model, scaler = load_models_and_scaler()
 # your NN & kmeans should also be loaded inside churn_utils.modeling if you prefer
 from churn_utils.modeling import nn_churn, kmeans
 from churn_utils.retention import toggle_costs
-θ_full, θ_contract = load_thetas()
+θ1_full, θ2_full, θ_contract = load_thetas()
 
 # ────────────────────────────
 # Sidebar: navigation
@@ -435,7 +435,7 @@ else:
     # 1) load & sample once
     processed_df = process_data(load_data())
     n = st.slider("Population size", 100, 2000, 500)
-    df0 = processed_df.sample(n, random_state=0).reset_index(drop=True)
+    df0 = processed_df.sample(n).reset_index(drop=True)
 
     # 2) baseline churn‐prob & rem‐life
     calc_churn_probability(df0, processed_df, lr_model, nn_churn)
@@ -443,10 +443,10 @@ else:
     rev0 = ((1 - df0["churn_prob"]) * df0["MonthlyCharges"] * R0).sum()
 
     # 3) build three “apply” functions
-    apply_full = lambda df: apply_retention_full(df.copy(), θ_full, kmeans)
+    apply_full = lambda df: apply_retention_full(df.copy(), θ1_full,θ2_full, kmeans)
     apply_contract = lambda df: apply_retention_contract(df.copy(), θ_contract, kmeans)
     apply_merged = lambda df: apply_retention_contract(
-                                apply_retention_full(df.copy(), θ_full, kmeans),
+                                apply_retention_full(df.copy(), θ1_full, θ2_full, kmeans),
                                 θ_contract,
                                 kmeans
                              )
