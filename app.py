@@ -520,7 +520,8 @@ elif page == "📈 Churn Prediction":
 # Retention Strategy Simulator (always compare all three)
 # ──────────────────────────────────────────────────────────────────────────
 else:
-    np.random.seed(60)
+    seed = 60
+    np.random.seed(seed)
     st.title("Retention Strategy Simulator")
     # 1) load & sample once
     processed_df = process_data(load_data())
@@ -669,4 +670,6 @@ else:
         ax.plot(cum_real, label="With Retention")
         ax.legend()
         st.pyplot(fig)
+
+        print(seed)
 
