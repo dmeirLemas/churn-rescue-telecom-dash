@@ -520,6 +520,7 @@ elif page == "📈 Churn Prediction":
 # Retention Strategy Simulator (always compare all three)
 # ──────────────────────────────────────────────────────────────────────────
 else:
+    np.random.seed(55)
     st.title("Retention Strategy Simulator")
     # 1) load & sample once
     processed_df = process_data(load_data())
