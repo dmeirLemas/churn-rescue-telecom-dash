@@ -643,13 +643,12 @@ else:
             cus_base  = upd(cus_base, processed_df, kmeans)
             return tick_rev, cus_base
 
-        # run 12 ticks for each scenario
         cum_real = []
         cum_no   = []
         rev_real = rev_no = 0
 
         # initialize
-        base_real = process_data(load_data()).sample(300).reset_index(drop=True)
+        base_real = process_data(load_data()).sample(300, random_state=31).reset_index(drop=True)
         base_real["retent"] = 0
         base_no   = base_real.copy()
 
